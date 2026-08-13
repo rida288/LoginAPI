@@ -263,30 +263,45 @@ export default function Dashboard() {
     setLoading(true);
     setError('');
     try {
-      // Probe if user is Admin by calling getPendingUsers
-      const [all, pending, myProjects, allProjs] = await Promise.all([
-        api.getAllUsers(),
-        api.getPendingUsers(),
-        api.getProjects(),
-        api.getAllProjects()
-      ]);
-      setRole('Admin');
-      localStorage.setItem('role', 'Admin');
-      setAllUsers(all);
-      setPendingUsers(pending);
-      setProjects(myProjects);
-      setAllProjects(allProjs);
-    } catch (err) {
-      // If 403 or permission error, this is a standard user
-      setRole('User');
-      localStorage.setItem('role', 'User');
-      setActiveView(VIEWS.MY_PROJECTS);
+      // Phase 1: Determine role with a single lightweight admin call.
+      // 200 = Admin, 403 = User, anything else = real error (do not demote role).
+      let isAdmin = false;
       try {
+        await api.getPendingUsers();
+        isAdmin = true;
+      } catch (err) {
+        const msg = (err.message || '').toLowerCase();
+        const isForbidden = msg.includes('403') || msg.includes('forbidden') || msg.includes('permission') || msg.includes('not enough');
+        if (!isForbidden) {
+          // Real error (network timeout, 500, etc.) — surface it, don't silently demote
+          throw err;
+        }
+        // 403 = confirmed non-admin, continue as User
+      }
+
+      // Phase 2: Fetch data based on confirmed role
+      if (isAdmin) {
+        setRole('Admin');
+        localStorage.setItem('role', 'Admin');
+        const [all, pending, myProjects, allProjs] = await Promise.all([
+          api.getAllUsers(),
+          api.getPendingUsers(),
+          api.getProjects(),
+          api.getAllProjects(),
+        ]);
+        setAllUsers(all);
+        setPendingUsers(pending);
+        setProjects(myProjects);
+        setAllProjects(allProjs);
+      } else {
+        setRole('User');
+        localStorage.setItem('role', 'User');
+        setActiveView(VIEWS.MY_PROJECTS);
         const myProjects = await api.getProjects();
         setProjects(myProjects);
-      } catch (e) {
-        setError(e.message);
       }
+    } catch (err) {
+      setError(err.message || 'Failed to load dashboard. Please refresh.');
     } finally {
       setLoading(false);
     }
