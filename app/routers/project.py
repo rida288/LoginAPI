@@ -11,11 +11,12 @@ projectRouter = APIRouter()
 # Schema representation for project metadata return
 from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional, List
 
 class ProjectOutput(BaseModel):
     id: int
     name: str
-    description: str = None
+    description: Optional[str] = None
     file_name: str
     owner_id: int
     created_at: datetime
@@ -40,7 +41,7 @@ def create_project(
         )
     except Exception as e:
         print(e)
-        raise e
+        raise HTTPException(status_code=500, detail=str(e))
 
 @projectRouter.get("", response_model=List[ProjectOutput])
 def get_user_projects(
@@ -51,7 +52,7 @@ def get_user_projects(
         return ProjectService(session=session).get_projects_by_owner(owner_id=current_user.id)
     except Exception as e:
         print(e)
-        raise e
+        raise HTTPException(status_code=500, detail=str(e))
 
 @projectRouter.get("/all", response_model=List[ProjectOutput])
 def get_all_projects(
@@ -62,7 +63,7 @@ def get_all_projects(
         return ProjectService(session=session).get_all_projects()
     except Exception as e:
         print(e)
-        raise e
+        raise HTTPException(status_code=500, detail=str(e))
 
 @projectRouter.get("/{project_id}/data")
 def get_project_data(
@@ -79,7 +80,7 @@ def get_project_data(
         )
     except Exception as e:
         print(e)
-        raise e
+        raise HTTPException(status_code=500, detail=str(e))
 
 @projectRouter.delete("/{project_id}")
 def delete_project(
@@ -96,4 +97,4 @@ def delete_project(
         )
     except Exception as e:
         print(e)
-        raise e
+        raise HTTPException(status_code=500, detail=str(e))
