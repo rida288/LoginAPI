@@ -45,3 +45,25 @@ class UserRepository(BaseRepository):
             self.session.commit()
             self.session.refresh(instance=user)
         return user
+
+    def update_user(self, user_id: int, data) -> User:
+        user = self.get_user_by_id(user_id)
+        if not user:
+            return None
+        if data.first_name is not None:
+            user.first_name = data.first_name
+        if data.last_name is not None:
+            user.last_name = data.last_name
+        if data.email is not None:
+            user.email = data.email
+        self.session.commit()
+        self.session.refresh(instance=user)
+        return user
+
+    def delete_user(self, user_id: int) -> bool:
+        user = self.get_user_by_id(user_id)
+        if not user:
+            return False
+        self.session.delete(user)
+        self.session.commit()
+        return True

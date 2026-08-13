@@ -7,6 +7,14 @@ class UserInCreate(BaseModel):
     last_name: str 
     email: EmailStr 
     password: str
+
+# For admin-created users — auto-approved, with optional role
+class UserAdminCreate(BaseModel):
+    first_name: str
+    last_name: str
+    email: EmailStr
+    password: str
+    role: str = "User"
     
 class UserOutput(BaseModel):
     id: int 

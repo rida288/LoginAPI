@@ -32,11 +32,23 @@ export const api = {
       body: JSON.stringify({ first_name, last_name, email, password }),
     }),
   logout: () => request('/auth/logout', { method: 'POST' }),
+
+  // Admin — user management
   getPendingUsers: () => request('/admin/users/pending', { method: 'GET' }),
   getAllUsers: () => request('/admin/users', { method: 'GET' }),
-  approveUser: (userId) =>
-    request(`/admin/users/${userId}/approve`, { method: 'PUT' }),
-  suspendUser: (userId) =>
-    request(`/admin/users/${userId}/suspend`, { method: 'PUT' }),
+  approveUser: (userId) => request(`/admin/users/${userId}/approve`, { method: 'PUT' }),
+  suspendUser: (userId) => request(`/admin/users/${userId}/suspend`, { method: 'PUT' }),
+  adminCreateUser: (data) =>
+    request('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  editUser: (userId, data) =>
+    request(`/admin/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ id: userId, ...data }),
+    }),
+  deleteUser: (userId) => request(`/admin/users/${userId}`, { method: 'DELETE' }),
+
   getProtected: () => request('/protected', { method: 'GET' }),
 };

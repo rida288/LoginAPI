@@ -1,5 +1,5 @@
 from app.db.repository.userRepo import UserRepository
-from app.db.schema.user import UserInCreate, UserInLogin, UserOutput, UserWithToken
+from app.db.schema.user import UserInCreate, UserInLogin, UserOutput, UserWithToken, UserAdminCreate
 from app.core.security.hashHelper import HashHelper
 from app.core.security.authHandler import AuthHandler
 from sqlalchemy.orm import Session
@@ -56,5 +56,36 @@ class UserService:
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         return user
-        
-        
+
+    def admin_create_user(self, user_details: UserAdminCreate) -> UserOutput:
+        if self.__userRepository.user_exists_by_email(email=user_details.email):
+            raise HTTPException(status_code=400, detail="User with this email already exists")
+        hashed_password = HashHelper.get_password_hash(plain_password=user_details.password)
+        user_details.password = hashed_password
+        # Directly create the user with is_approved=True via model kwargs
+        from app.db.models.user import User
+        from app.core.database import get_db
+        user = User(
+            first_name=user_details.first_name,
+            last_name=user_details.last_name,
+            email=user_details.email,
+            password=user_details.password,
+            role=user_details.role,
+            is_approved=True
+        )
+        self.__userRepository.session.add(user)
+        self.__userRepository.session.commit()
+        self.__userRepository.session.refresh(user)
+        return user
+
+    def update_user(self, user_id: int, data):
+        user = self.__userRepository.update_user(user_id=user_id, data=data)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return user
+
+    def delete_user(self, user_id: int):
+        deleted = self.__userRepository.delete_user(user_id=user_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {"message": "User deleted successfully"}
