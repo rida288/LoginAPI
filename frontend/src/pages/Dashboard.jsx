@@ -232,7 +232,7 @@ function PendingView({ users, onApprove }) {
 
 // --- Main Dashboard ---
 export default function Dashboard() {
-  const [role] = useState(localStorage.getItem('role'));
+  const [role, setRole] = useState(localStorage.getItem('role') || 'User');
   const [activeView, setActiveView] = useState(role === 'Admin' ? VIEWS.ALL_USERS : VIEWS.MY_PROJECTS);
   const [allUsers, setAllUsers] = useState([]);
   const [pendingUsers, setPendingUsers] = useState([]);
@@ -251,10 +251,46 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!localStorage.getItem('token')) { navigate('/login'); return; }
-    if (role === 'Admin') fetchAdminData();
-    else fetchUserData();
-  }, [role, navigate]);
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+    initDashboard();
+  }, [navigate]);
+
+  const initDashboard = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      // Probe if user is Admin by calling getPendingUsers
+      const [all, pending, myProjects, allProjs] = await Promise.all([
+        api.getAllUsers(),
+        api.getPendingUsers(),
+        api.getProjects(),
+        api.getAllProjects()
+      ]);
+      setRole('Admin');
+      localStorage.setItem('role', 'Admin');
+      setAllUsers(all);
+      setPendingUsers(pending);
+      setProjects(myProjects);
+      setAllProjects(allProjs);
+    } catch (err) {
+      // If 403 or permission error, this is a standard user
+      setRole('User');
+      localStorage.setItem('role', 'User');
+      setActiveView(VIEWS.MY_PROJECTS);
+      try {
+        const myProjects = await api.getProjects();
+        setProjects(myProjects);
+      } catch (e) {
+        setError(e.message);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchUserData = async () => {
     try {
