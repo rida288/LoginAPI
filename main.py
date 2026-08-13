@@ -19,8 +19,8 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Allow frontend running on any port during dev
-    allow_credentials=True,
+    allow_origins=["*"],  # Bearer token auth — credentials=True not needed
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

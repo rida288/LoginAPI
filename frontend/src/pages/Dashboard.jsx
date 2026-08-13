@@ -265,9 +265,10 @@ export default function Dashboard() {
     try {
       // Phase 1: Determine role with a single lightweight admin call.
       // 200 = Admin, 403 = User, anything else = real error (do not demote role).
+      let pendingUsersData = [];
       let isAdmin = false;
       try {
-        await api.getPendingUsers();
+        pendingUsersData = await api.getPendingUsers();
         isAdmin = true;
       } catch (err) {
         const msg = (err.message || '').toLowerCase();
@@ -283,14 +284,13 @@ export default function Dashboard() {
       if (isAdmin) {
         setRole('Admin');
         localStorage.setItem('role', 'Admin');
-        const [all, pending, myProjects, allProjs] = await Promise.all([
+        const [all, myProjects, allProjs] = await Promise.all([
           api.getAllUsers(),
-          api.getPendingUsers(),
           api.getProjects(),
           api.getAllProjects(),
         ]);
         setAllUsers(all);
-        setPendingUsers(pending);
+        setPendingUsers(pendingUsersData);  // reuse Phase 1 result
         setProjects(myProjects);
         setAllProjects(allProjs);
       } else {
