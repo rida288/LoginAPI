@@ -19,11 +19,7 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173", 
-        "http://localhost:5174",
-        "https://login-api-smoky.vercel.app"
-    ],
+    allow_origins=["*"], # Allow frontend running on any port during dev
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
