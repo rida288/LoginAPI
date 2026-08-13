@@ -3,7 +3,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const request = async (endpoint, options = {}) => {
   const token = localStorage.getItem('token');
   const headers = {
-    'Content-Type': 'application/json',
+    ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
     ...(token && { Authorization: `Bearer ${token}` }),
     ...options.headers,
   };
@@ -49,6 +49,17 @@ export const api = {
       body: JSON.stringify({ id: userId, ...data }),
     }),
   deleteUser: (userId) => request(`/admin/users/${userId}`, { method: 'DELETE' }),
+
+  // Projects
+  getProjects: () => request('/projects', { method: 'GET' }),
+  getAllProjects: () => request('/projects/all', { method: 'GET' }),
+  createProject: (formData) =>
+    request('/projects', {
+      method: 'POST',
+      body: formData,
+    }),
+  getProjectData: (projectId) => request(`/projects/${projectId}/data`, { method: 'GET' }),
+  deleteProject: (projectId) => request(`/projects/${projectId}`, { method: 'DELETE' }),
 
   getProtected: () => request('/protected', { method: 'GET' }),
 };

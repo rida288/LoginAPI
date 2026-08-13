@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from app.util.init_db import create_tables
 from app.routers.auth import authRouter
 from app.routers.admin import adminRouter
+from app.routers.project import projectRouter
 from app.util.protectRoute import get_current_user
 from app.db.schema.user import UserOutput
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +26,7 @@ app.add_middleware(
 )
 app.include_router(authRouter, tags=["auth"], prefix="/auth")
 app.include_router(adminRouter, tags=["admin"], prefix="/admin")
+app.include_router(projectRouter, tags=["projects"], prefix="/projects")
 
 @app.get("/health")
 def health_check():
