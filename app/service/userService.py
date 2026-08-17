@@ -27,7 +27,7 @@ class UserService:
             raise HTTPException(status_code=403, detail="Account pending admin approval")
             
         if HashHelper.verify_password(plain_password=login_details.password, hashed_password=user.password):
-            token = AuthHandler.sign_jwt(user_id=user.id)
+            token = AuthHandler.sign_jwt(user_id=user.id, role=user.role)
             if token:
                 return UserWithToken(token=token)
             raise HTTPException(status_code=500, detail="Error generating token")

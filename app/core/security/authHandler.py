@@ -7,9 +7,10 @@ JWT_ALGORITHM = config("JWT_ALGORITHM")
 
 class AuthHandler(object):
     @staticmethod 
-    def sign_jwt(user_id:int) -> str:
+    def sign_jwt(user_id:int, role:str) -> str:
         payload = {
             "user_id":user_id, 
+            "role": role,
             "expires":time.time()+900
         }
         token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)

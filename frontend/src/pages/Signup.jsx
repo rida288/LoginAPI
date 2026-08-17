@@ -102,9 +102,15 @@ export default function Signup() {
             />
           </div>
 
-          <button type="submit" className="primary-btn" disabled={loading || success}>
-            {loading ? 'Registering...' : 'Sign Up'}
-          </button>
+          {loading ? (
+            <div className="auth-loader-container">
+              <div className="circle-loader"></div>
+            </div>
+          ) : (
+            <button type="submit" className="primary-btn" disabled={success}>
+              Sign Up
+            </button>
+          )}
         </form>
 
         <p className="auth-footer">
