@@ -1,17 +1,10 @@
 import os
-import shutil
 import pandas as pd
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, UploadFile
 from app.db.repository.projectRepo import ProjectRepository
 from app.db.models.project import Project
-
-import tempfile
-
-if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
-    UPLOAD_DIR = os.path.join(tempfile.gettempdir(), "uploads")
-else:
-    UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "uploads")
+from app.core.storage.s3_client import S3Client
 
 class ProjectService:
     def __init__(self, session: Session):
@@ -23,27 +16,18 @@ class ProjectService:
         if ext not in [".csv", ".xlsx"]:
             raise HTTPException(status_code=400, detail="Only .csv and .xlsx files are supported")
 
-        # Ensure upload directory exists
-        if not os.path.exists(UPLOAD_DIR):
-            os.makedirs(UPLOAD_DIR)
-
-        # Save file to upload directory
-        # Generate unique filename to prevent collisions
         import uuid
         unique_filename = f"{uuid.uuid4()}{ext}"
-        file_path = os.path.join(UPLOAD_DIR, unique_filename)
 
-        try:
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+        # Upload file to S3
+        s3_client = S3Client()
+        s3_client.upload_file(file.file, unique_filename)
 
         return self.__projectRepository.create_project(
             name=name,
             description=description,
             file_name=file.filename,
-            file_path=file_path,
+            file_path=unique_filename,
             owner_id=owner_id
         )
 
@@ -66,13 +50,11 @@ class ProjectService:
         if project.owner_id != current_user_id and not is_admin:
             raise HTTPException(status_code=403, detail="Not authorized to delete this project")
 
-        # Delete physical file from disk
-        if os.path.exists(project.file_path):
-            try:
-                os.remove(project.file_path)
-            except Exception as e:
-                # Log the error but proceed to delete database entry
-                print(f"Error removing file {project.file_path}: {e}")
+        # Delete physical file from S3
+        try:
+            S3Client().delete_file(project.file_path)
+        except Exception as e:
+            print(f"Error removing file {project.file_path} from S3: {e}")
 
         # Delete database entry
         self.__projectRepository.delete_project(project_id)
@@ -85,16 +67,16 @@ class ProjectService:
         if project.owner_id != current_user_id and not is_admin:
             raise HTTPException(status_code=403, detail="Not authorized to access this project's data")
 
-        if not os.path.exists(project.file_path):
-            raise HTTPException(status_code=404, detail="Project data file missing on server")
-
         ext = os.path.splitext(project.file_path)[1].lower()
 
         try:
+            s3_client = S3Client()
+            file_stream = s3_client.get_file_stream(project.file_path)
+
             if ext == ".csv":
-                df = pd.read_csv(project.file_path)
+                df = pd.read_csv(file_stream)
             elif ext == ".xlsx":
-                df = pd.read_excel(project.file_path)
+                df = pd.read_excel(file_stream)
             else:
                 raise HTTPException(status_code=400, detail="Unsupported file format")
 

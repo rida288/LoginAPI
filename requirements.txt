@@ -11,4 +11,4 @@ python-multipart
 bcrypt
 pandas
 openpyxl
-
+boto3
