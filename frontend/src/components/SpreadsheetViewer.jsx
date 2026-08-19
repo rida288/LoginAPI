@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 
 export default function SpreadsheetViewer({ project, onClose }) {
-  const [data, setData] = useState({ headers: [], rows: [] });
+  const [data, setData] = useState({ sheets: [] });
+  const [activeSheetIndex, setActiveSheetIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -47,12 +48,16 @@ export default function SpreadsheetViewer({ project, onClose }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const currentSheet = data.sheets && data.sheets.length > 0 ? data.sheets[activeSheetIndex] : { headers: [], rows: [] };
+
   // Compute unique values for each column for the Excel filters
   const uniqueColumnValues = useMemo(() => {
     const values = {};
-    data.headers.forEach(header => {
+    if (!currentSheet.headers) return values;
+
+    currentSheet.headers.forEach(header => {
       const unique = new Set();
-      data.rows.forEach(row => {
+      currentSheet.rows.forEach(row => {
         const val = row[header];
         unique.add(val === null || val === undefined ? '(Blank)' : String(val));
       });
@@ -61,18 +66,21 @@ export default function SpreadsheetViewer({ project, onClose }) {
       );
     });
     return values;
-  }, [data]);
+  }, [currentSheet]);
 
-  // Initialize filters with all values selected when data loads
+  // Initialize filters with all values selected when data or sheet changes
   useEffect(() => {
-    if (data.headers.length > 0) {
+    if (currentSheet.headers && currentSheet.headers.length > 0) {
       const initial = {};
-      data.headers.forEach(header => {
+      currentSheet.headers.forEach(header => {
         initial[header] = new Set(uniqueColumnValues[header]);
       });
       setActiveFilters(initial);
+      setSearchTerm('');
+      setSortConfig({ key: null, direction: 'asc' });
+      setCurrentPage(1);
     }
-  }, [data, uniqueColumnValues]);
+  }, [currentSheet, uniqueColumnValues]);
 
   // Handle filter checkbox toggle
   const handleFilterToggle = (column, value) => {
@@ -123,10 +131,11 @@ export default function SpreadsheetViewer({ project, onClose }) {
 
   // Process rows: Filter -> Search -> Sort
   const processedRows = useMemo(() => {
-    let rows = [...data.rows];
+    if (!currentSheet.rows) return [];
+    let rows = [...currentSheet.rows];
 
     // 1. Column Filters
-    data.headers.forEach(header => {
+    currentSheet.headers.forEach(header => {
       const allowed = activeFilters[header];
       if (allowed) {
         rows = rows.filter(row => {
@@ -184,7 +193,7 @@ export default function SpreadsheetViewer({ project, onClose }) {
     setSearchTerm('');
     setSortConfig({ key: null, direction: 'asc' });
     const resetFilters = {};
-    data.headers.forEach(header => {
+    currentSheet.headers.forEach(header => {
       resetFilters[header] = new Set(uniqueColumnValues[header]);
     });
     setActiveFilters(resetFilters);
@@ -193,7 +202,8 @@ export default function SpreadsheetViewer({ project, onClose }) {
 
   const getActiveFiltersCount = () => {
     let count = 0;
-    data.headers.forEach(header => {
+    if (!currentSheet.headers) return 0;
+    currentSheet.headers.forEach(header => {
       if (isColumnFiltered(header)) count++;
     });
     if (searchTerm) count++;
@@ -222,7 +232,7 @@ export default function SpreadsheetViewer({ project, onClose }) {
             <span className="file-icon">📊</span>
             <div>
               <h3>{project.name}</h3>
-              <p className="subtitle">{project.file_name} • {data.rows.length} rows</p>
+              <p className="subtitle">{project.file_name} • {currentSheet.rows?.length || 0} rows</p>
             </div>
           </div>
 
@@ -259,7 +269,7 @@ export default function SpreadsheetViewer({ project, onClose }) {
                 <thead>
                   <tr>
                     <th className="row-num-col">#</th>
-                    {data.headers.map((header) => {
+                    {currentSheet.headers?.map((header) => {
                       const isFiltered = isColumnFiltered(header);
                       const isSorted = sortConfig.key === header;
                       return (
@@ -277,7 +287,7 @@ export default function SpreadsheetViewer({ project, onClose }) {
                                 onClick={() => setOpenFilterDropdown(openFilterDropdown === header ? null : header)}
                                 title="Filter column"
                               >
-                                ⚡
+                                ▼
                               </button>
 
                               {/* Filter Dropdown Menu */}
@@ -335,7 +345,7 @@ export default function SpreadsheetViewer({ project, onClose }) {
                 <tbody>
                   {paginatedRows.length === 0 ? (
                     <tr>
-                      <td colSpan={data.headers.length + 1} className="no-rows">
+                      <td colSpan={(currentSheet.headers?.length || 0) + 1} className="no-rows">
                         No rows match current search, filters, or sorting configuration.
                       </td>
                     </tr>
@@ -345,7 +355,7 @@ export default function SpreadsheetViewer({ project, onClose }) {
                       return (
                         <tr key={index}>
                           <td className="row-num-cell">{absoluteIndex}</td>
-                          {data.headers.map(header => {
+                          {currentSheet.headers?.map(header => {
                             const val = row[header];
                             return (
                               <td key={header} className={val === null || val === undefined ? 'empty-cell' : ''}>
@@ -361,10 +371,25 @@ export default function SpreadsheetViewer({ project, onClose }) {
               </table>
             </div>
 
+            {/* Sheet Tabs at Bottom */}
+            {data.sheets && data.sheets.length > 1 && (
+              <div className="sheet-tabs-container">
+                {data.sheets.map((sheet, idx) => (
+                  <button
+                    key={idx}
+                    className={`sheet-tab ${idx === activeSheetIndex ? 'active' : ''}`}
+                    onClick={() => setActiveSheetIndex(idx)}
+                  >
+                    {sheet.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Footer / Pagination Toolbar */}
             <footer className="viewer-footer">
               <div className="footer-status">
-                Showing {Math.min(processedRows.length, (currentPage - 1) * rowsPerPage + 1)}-{Math.min(processedRows.length, currentPage * rowsPerPage)} of {processedRows.length} filtered rows (Total: {data.rows.length})
+                Showing {Math.min(processedRows.length, (currentPage - 1) * rowsPerPage + 1)}-{Math.min(processedRows.length, currentPage * rowsPerPage)} of {processedRows.length} filtered rows (Total: {currentSheet.rows?.length || 0})
               </div>
 
               <div className="footer-pagination">

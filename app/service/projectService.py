@@ -87,29 +87,35 @@ class ProjectService:
 
             if ext == ".csv":
                 df = pd.read_csv(file_buffer)
+                sheets_data = {"Sheet1": df}
             elif ext == ".xlsx":
-                df = pd.read_excel(file_buffer)
+                sheets_data = pd.read_excel(file_buffer, sheet_name=None)
             else:
                 raise HTTPException(status_code=400, detail="Unsupported file format")
 
-            # Clean/Replace NaN/NaT values so they serialize as proper JSON null
-            df = df.astype(object).where(pd.notnull(df), None)
+            result_sheets = []
+            for sheet_name, df in sheets_data.items():
+                # Clean/Replace NaN/NaT values so they serialize as proper JSON null
+                df = df.astype(object).where(pd.notnull(df), None)
 
-            # Limit rows to prevent massive payloads if files are giant (e.g. max 5000 rows for view)
-            # Standard excel sheets for this kind of demo usually fit fine.
-            # Let's keep it full unless it's extremely huge, say limit to 10000 rows.
-            if len(df) > 10000:
-                df = df.head(10000)
+                # Limit rows to prevent massive payloads if files are giant
+                if len(df) > 10000:
+                    df = df.head(10000)
 
-            # Clean columns: rename duplicate columns or empty ones
-            df.columns = [str(col).strip() if pd.notnull(col) else f"Unnamed_{i}" for i, col in enumerate(df.columns)]
+                # Clean columns: rename duplicate columns or empty ones
+                df.columns = [str(col).strip() if pd.notnull(col) else f"Unnamed_{i}" for i, col in enumerate(df.columns)]
 
-            headers = list(df.columns)
-            rows = df.to_dict(orient="records")
+                headers = list(df.columns)
+                rows = df.to_dict(orient="records")
+
+                result_sheets.append({
+                    "name": sheet_name,
+                    "headers": headers,
+                    "rows": rows
+                })
 
             return {
-                "headers": headers,
-                "rows": rows
+                "sheets": result_sheets
             }
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error parsing file: {str(e)}")
