@@ -16,6 +16,15 @@ class ProjectService:
         if ext not in [".csv", ".xlsx"]:
             raise HTTPException(status_code=400, detail="Only .csv and .xlsx files are supported")
 
+        # Check file size (limit to 5MB)
+        file.file.seek(0, os.SEEK_END)
+        file_size = file.file.tell()
+        file.file.seek(0) # Reset pointer
+        
+        MAX_SIZE_MB = 5
+        if file_size > MAX_SIZE_MB * 1024 * 1024:
+            raise HTTPException(status_code=400, detail=f"File size exceeds the {MAX_SIZE_MB}MB limit. Please upload a smaller file.")
+
         import uuid
         unique_filename = f"{uuid.uuid4()}{ext}"
 
@@ -72,11 +81,14 @@ class ProjectService:
         try:
             s3_client = S3Client()
             file_stream = s3_client.get_file_stream(project.file_path)
+            
+            import io
+            file_buffer = io.BytesIO(file_stream.read())
 
             if ext == ".csv":
-                df = pd.read_csv(file_stream)
+                df = pd.read_csv(file_buffer)
             elif ext == ".xlsx":
-                df = pd.read_excel(file_stream)
+                df = pd.read_excel(file_buffer)
             else:
                 raise HTTPException(status_code=400, detail="Unsupported file format")
 
