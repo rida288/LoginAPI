@@ -20,8 +20,17 @@ def get_search_tool(db: Session, project_id: int):
         if not actual_query:
             return "Error: Please provide a query or question."
             
-        # Embed the query
-        query_embedding = embedding_model.embed_query(actual_query)
+        # Embed the query with a robust retry loop
+        import time
+        query_embedding = None
+        for attempt in range(5):
+            try:
+                query_embedding = embedding_model.embed_query(actual_query)
+                break
+            except Exception as e:
+                if attempt == 4:
+                    return "Error: The embeddings API is currently experiencing network issues (HuggingFace DNS). Please try again in a few moments."
+                time.sleep(2)
         
         # Query pgvector for the top 5 closest matches, filtered by project_id
         stmt = select(ProjectEmbedding).where(

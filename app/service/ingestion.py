@@ -65,8 +65,18 @@ class IngestionService:
             batch_texts = texts_to_embed[i:i + batch_size]
             batch_indices = row_indices[i:i + batch_size]
             
-            # Generate embeddings for the batch
-            embeddings = embedding_model.embed_documents(batch_texts)
+            # Generate embeddings for the batch with a robust retry loop
+            import time
+            embeddings = None
+            for attempt in range(5):
+                try:
+                    embeddings = embedding_model.embed_documents(batch_texts)
+                    break
+                except Exception as e:
+                    if attempt == 4:
+                        raise e
+                    print(f"[InsightAI] HuggingFace API network error, retrying... ({e})")
+                    time.sleep(3)
             
             # Create ProjectEmbedding objects
             db_embeddings = []
