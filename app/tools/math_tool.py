@@ -1,7 +1,6 @@
 from langchain.tools import tool
 from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
 from langchain_groq import ChatGroq
-from app.util.groq_model import get_best_groq_model
 import pandas as pd
 
 def get_math_tool(file_path: str):
@@ -21,8 +20,8 @@ def get_math_tool(file_path: str):
     else:
         raise ValueError("Unsupported file format")
 
-    # Initialize a specific LLM for the Pandas agent (Llama 3 is excellent for code generation)
-    llm = ChatGroq(model_name=get_best_groq_model(), temperature=0)
+    # Initialize a specific LLM for the Pandas agent
+    llm = ChatGroq(model_name="openai/gpt-oss-120b", temperature=0)
     
     # Create the pandas agent
     pandas_agent = create_pandas_dataframe_agent(
