@@ -20,8 +20,8 @@ class ChatService:
         self.project_id = project_id
         self.file_path = file_path
 
-        # Initialize LLM - Swapped to llama3-8b-8192 for flawless tool calling (fixes JSON parsing errors)
-        self.llm = ChatGroq(model_name="llama3-8b-8192", temperature=0)
+        # Initialize LLM - Swapped to openai/gpt-oss-20b for flawless tool calling (fixes JSON parsing errors)
+        self.llm = ChatGroq(model_name="openai/gpt-oss-20b", temperature=0)
 
         # Initialize tools
         self.search_tool = get_search_tool(db=self.db, project_id=self.project_id)
