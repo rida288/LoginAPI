@@ -20,8 +20,8 @@ class ChatService:
         self.project_id = project_id
         self.file_path = file_path
 
-        # Initialize LLM
-        self.llm = ChatGroq(model_name="openai/gpt-oss-120b", temperature=0)
+        # Initialize LLM - Swapped to llama3-8b-8192 for flawless tool calling (fixes JSON parsing errors)
+        self.llm = ChatGroq(model_name="llama3-8b-8192", temperature=0)
 
         # Initialize tools
         self.search_tool = get_search_tool(db=self.db, project_id=self.project_id)
@@ -37,9 +37,29 @@ class ChatService:
         )
 
     def ask_question(self, question: str) -> str:
-        try:
-            response = self.agent.invoke({"messages": [("human", question)]})
-            # Last message in the response is the final AI answer
-            return response["messages"][-1].content
-        except Exception as e:
-            return f"An error occurred while processing your request: {str(e)}"
+        import time
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            try:
+                response = self.agent.invoke({"messages": [("human", question)]})
+                return response["messages"][-1].content
+            except Exception as e:
+                error_msg = str(e)
+                # Handle rate limits
+                if "429" in error_msg or "rate limit" in error_msg.lower():
+                    if attempt < max_retries - 1:
+                        sleep_time = 2 ** attempt
+                        print(f"[InsightAI] Rate limit hit for chat_service, retrying in {sleep_time}s...")
+                        time.sleep(sleep_time)
+                        continue
+                
+                # Handle malformed JSON from the LLM
+                if "Failed to parse tool call" in error_msg or "JSON" in error_msg:
+                    if attempt < max_retries - 1:
+                        print(f"[InsightAI] LLM hallucinated invalid JSON, retrying...")
+                        time.sleep(1)
+                        continue
+                    return "The AI agent made a syntax error while trying to answer your question. Please try asking in a slightly different way."
+                
+                return f"An error occurred while processing your request: {error_msg}"

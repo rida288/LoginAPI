@@ -59,38 +59,51 @@ class IngestionService:
                 texts_to_embed.append(content)
                 row_indices.append(idx)
         
-        # Process in batches for optimized performance
+        import concurrent.futures
+        
+        # Prepare all batches
+        batches = []
         total_rows = len(texts_to_embed)
         for i in range(0, total_rows, batch_size):
             batch_texts = texts_to_embed[i:i + batch_size]
             batch_indices = row_indices[i:i + batch_size]
+            batches.append((batch_texts, batch_indices))
             
-            # Generate embeddings for the batch with a robust retry loop
+        def embed_batch(batch):
+            batch_texts, batch_indices = batch
             import time
-            embeddings = None
             for attempt in range(5):
                 try:
                     embeddings = embedding_model.embed_documents(batch_texts)
-                    break
+                    return batch_texts, batch_indices, embeddings
                 except Exception as e:
                     if attempt == 4:
                         raise e
                     print(f"[InsightAI] HuggingFace API network error, retrying... ({e})")
                     time.sleep(3)
+            return None
             
-            # Create ProjectEmbedding objects
-            db_embeddings = []
-            for j in range(len(batch_texts)):
-                db_emb = ProjectEmbedding(
-                    project_id=project_id,
-                    row_index=batch_indices[j],
-                    content=batch_texts[j],
-                    embedding=embeddings[j]
-                )
-                db_embeddings.append(db_emb)
+        # Execute embeddings in parallel (HuggingFace API allows some concurrency)
+        print(f"[InsightAI] Embedding {len(batches)} batches concurrently...")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            # map preserves the order of results
+            results = list(executor.map(embed_batch, batches))
             
-            # Bulk save to DB for efficiency
-            self.db.bulk_save_objects(db_embeddings)
-            self.db.commit()
+        # Save to DB sequentially to avoid locking issues
+        for result in results:
+            if result:
+                batch_texts, batch_indices, embeddings = result
+                db_embeddings = []
+                for j in range(len(batch_texts)):
+                    db_emb = ProjectEmbedding(
+                        project_id=project_id,
+                        row_index=batch_indices[j],
+                        content=batch_texts[j],
+                        embedding=embeddings[j]
+                    )
+                    db_embeddings.append(db_emb)
+                
+                self.db.bulk_save_objects(db_embeddings)
+                self.db.commit()
             
         return total_rows
