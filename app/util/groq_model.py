@@ -11,13 +11,15 @@ PREFERRED_MODELS = [
     "llama3-8b-8192",                             # Universal free-tier guaranteed
 ]
 
+from decouple import config
+
 def get_best_groq_model() -> str:
     """
     Queries the Groq API for currently available models and returns
     the best one from our priority list. Falls back gracefully if the
     API call fails.
     """
-    api_key = os.environ.get("GROQ_API_KEY", "")
+    api_key = config("GROQ_API_KEY", default="")
     
     try:
         response = httpx.get(
