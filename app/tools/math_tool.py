@@ -1,7 +1,11 @@
 from langchain.tools import tool
 from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
 from langchain_groq import ChatGroq
+from pydantic import BaseModel, Field
 import pandas as pd
+
+class ToolInput(BaseModel):
+    query: str = Field(description="The natural language question or search query")
 
 def get_math_tool(file_path: str):
     from app.core.storage.s3_client import S3Client
@@ -32,7 +36,7 @@ def get_math_tool(file_path: str):
         agent_type="tool-calling"
     )
 
-    @tool("math_and_data_engine")
+    @tool("math_and_data_engine", args_schema=ToolInput)
     def math_and_data_engine(query: str) -> str:
         """
         Use this tool when the question requires math, aggregations, counting, sorting, or exact column filtering on the dataset.
