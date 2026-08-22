@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 import pandas as pd
 
 class ToolInput(BaseModel):
-    query: str = Field(description="The natural language question or search query")
+    question: str = Field(description="The natural language question or search query")
 
 def get_math_tool(file_path: str):
     from app.core.storage.s3_client import S3Client
@@ -37,13 +37,13 @@ def get_math_tool(file_path: str):
     )
 
     @tool("math_and_data_engine", args_schema=ToolInput)
-    def math_and_data_engine(query: str) -> str:
+    def math_and_data_engine(question: str) -> str:
         """
         Use this tool when the question requires math, aggregations, counting, sorting, or exact column filtering on the dataset.
         Input should be a detailed natural language question about the data.
         """
         try:
-            response = pandas_agent.invoke({"input": query})
+            response = pandas_agent.invoke({"input": question})
             return response["output"]
         except Exception as e:
             return f"Error executing data analysis: {str(e)}"

@@ -6,17 +6,17 @@ from app.db.models.project_embedding import ProjectEmbedding
 from app.service.ingestion import embedding_model
 
 class SearchInput(BaseModel):
-    query: str = Field(description="The natural language query to search for")
+    question: str = Field(description="The natural language query to search for")
 
 def get_search_tool(db: Session, project_id: int):
     @tool("semantic_search", args_schema=SearchInput)
-    def semantic_search(query: str) -> str:
+    def semantic_search(question: str) -> str:
         """
         Use this tool to search for semantic meaning, context, or fuzzy matching in the spreadsheet's text data.
         Input should be a search query.
         """
         # Embed the query
-        query_embedding = embedding_model.embed_query(query)
+        query_embedding = embedding_model.embed_query(question)
         
         # Query pgvector for the top 5 closest matches, filtered by project_id
         stmt = select(ProjectEmbedding).where(
