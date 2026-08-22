@@ -1,13 +1,14 @@
 import os
 import httpx
 
-# Ordered priority list — best model first, fallback down the list
+# Ordered priority list — best available first, fallback down the list.
+# Free-tier guaranteed models are listed after the preferred ones as safe fallbacks.
 PREFERRED_MODELS = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-70b-versatile",
-    "llama3-70b-8192",
-    "mixtral-8x7b-32768",
-    "llama3-8b-8192",
+    "meta-llama/llama-4-scout-17b-16e-instruct", # Latest, highly capable
+    "llama-3.3-70b-versatile",                    # Strong 70b
+    "llama-3.1-70b-versatile",                    # Older 70b
+    "mixtral-8x7b-32768",                         # Reliable free-tier fallback
+    "llama3-8b-8192",                             # Universal free-tier guaranteed
 ]
 
 def get_best_groq_model() -> str:
