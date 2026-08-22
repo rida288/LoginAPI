@@ -98,3 +98,31 @@ def delete_project(
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail=str(e))
+
+class ChatRequest(BaseModel):
+    message: str
+
+@projectRouter.post("/{project_id}/chat")
+async def chat_with_project(
+    project_id: int,
+    request: ChatRequest,
+    session: Session = Depends(get_db),
+    current_user: UserOutput = Depends(get_current_user)
+):
+    from app.service.chat_service import ChatService
+    from app.db.repository.projectRepo import ProjectRepository
+    try:
+        is_admin = (current_user.role == "Admin")
+        project = ProjectRepository(session=session).get_project_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+            
+        if project.owner_id != current_user.id and not is_admin:
+            raise HTTPException(status_code=403, detail="Not authorized to access this project")
+            
+        chat_service = ChatService(db=session, project_id=project_id, file_path=project.file_path)
+        answer = chat_service.ask_question(request.message)
+        return {"answer": answer}
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=500, detail=str(e))

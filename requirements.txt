@@ -11,4 +11,10 @@ python-multipart
 bcrypt
 pandas
 openpyxl
-boto3
+boto3 
+langchain
+langchain-groq
+langchain-huggingface
+langchain-experimental
+pgvector
+sentence-transformers
