@@ -1,6 +1,7 @@
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.prebuilt import create_react_agent
+from app.util.groq_model import get_best_groq_model
 from app.tools.search_tool import get_search_tool
 from app.tools.math_tool import get_math_tool
 from sqlalchemy.orm import Session
@@ -21,7 +22,7 @@ class ChatService:
         self.file_path = file_path
 
         # Initialize LLM
-        self.llm = ChatGroq(model_name="llama3-70b-8192", temperature=0)
+        self.llm = ChatGroq(model_name=get_best_groq_model(), temperature=0)
 
         # Initialize tools
         self.search_tool = get_search_tool(db=self.db, project_id=self.project_id)

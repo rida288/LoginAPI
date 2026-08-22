@@ -19,3 +19,4 @@ langchain-experimental
 langgraph
 pgvector
 tabulate
+httpx
