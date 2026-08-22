@@ -13,6 +13,15 @@ export default function SpreadsheetViewer({ project, onClose }) {
   const [openFilterDropdown, setOpenFilterDropdown] = useState(null); // colName
   const [filterSearchTerms, setFilterSearchTerms] = useState({}); // { colName: searchString }
 
+  // Chat/AI State
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState([
+    { role: 'system', text: 'Hello! I am InsightAI. I can analyze this spreadsheet and answer your questions using the Math and Semantic engines.' }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const chatEndRef = useRef(null);
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(50);
@@ -36,6 +45,33 @@ export default function SpreadsheetViewer({ project, onClose }) {
     };
     fetchProjectData();
   }, [project.id]);
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, isChatOpen]);
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+
+    const userMsg = chatInput.trim();
+    setChatMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    setChatInput('');
+    setIsChatLoading(true);
+
+    try {
+      const { api } = await import('../services/api');
+      const res = await api.chatWithProject(project.id, userMsg);
+      setChatMessages(prev => [...prev, { role: 'system', text: res.answer }]);
+    } catch (err) {
+      setChatMessages(prev => [...prev, { role: 'system', text: `Error: ${err.message}` }]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
 
   // Click outside to close column filter dropdowns
   useEffect(() => {
@@ -224,223 +260,270 @@ export default function SpreadsheetViewer({ project, onClose }) {
 
   return (
     <div className="viewer-overlay">
-      <div className="viewer-container">
+      <div className={`viewer-content-wrapper ${isChatOpen ? 'chat-open' : ''}`}>
+        <div className="viewer-container">
 
-        {/* Header toolbar */}
-        <header className="viewer-header">
-          <div className="header-info">
-            <span className="file-icon">📊</span>
-            <div>
-              <h3>{project.name}</h3>
-              <p className="subtitle">{project.file_name} • {currentSheet.rows?.length || 0} rows</p>
+          {/* Header toolbar */}
+          <header className="viewer-header">
+            <div className="header-info">
+              <span className="file-icon">📊</span>
+              <div>
+                <h3>{project.name}</h3>
+                <p className="subtitle">{project.file_name} • {currentSheet.rows?.length || 0} rows</p>
+              </div>
             </div>
-          </div>
 
-          <div className="header-actions">
-            {getActiveFiltersCount() > 0 && (
-              <button className="reset-filters-btn" onClick={resetAllFilters}>
-                Clear Active Filters ({getActiveFiltersCount()})
+            <div className="header-actions">
+              <button
+                className={`ai-toggle-btn ${isChatOpen ? 'active' : ''}`}
+                onClick={() => setIsChatOpen(!isChatOpen)}
+              >
+                ✨ InsightAI
               </button>
-            )}
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search spreadsheet..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
-            />
-            <button className="close-btn" onClick={onClose}>Close Viewer</button>
-          </div>
-        </header>
+              {getActiveFiltersCount() > 0 && (
+                <button className="reset-filters-btn" onClick={resetAllFilters}>
+                  Clear Active Filters ({getActiveFiltersCount()})
+                </button>
+              )}
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search spreadsheet..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
+              />
+              <button className="close-btn" onClick={onClose}>Close Viewer</button>
+            </div>
+          </header>
 
-        {error ? (
-          <div className="viewer-error">
-            <p className="error-msg">{error}</p>
-            <button className="primary-btn" onClick={onClose}>Go Back</button>
-          </div>
-        ) : (
-          <>
-            {/* Table viewport */}
-            <div className="table-viewport">
-              <table className="excel-table">
-                <thead>
-                  <tr>
-                    <th className="row-num-col">#</th>
-                    {currentSheet.headers?.map((header) => {
-                      const isFiltered = isColumnFiltered(header);
-                      const isSorted = sortConfig.key === header;
-                      return (
-                        <th key={header} className={isSorted ? 'sorted-th' : ''}>
-                          <div className="th-content">
-                            <span className="th-title" onClick={() => requestSort(header)}>
-                              {header}
-                              {isSorted && (sortConfig.direction === 'asc' ? ' 🔼' : ' 🔽')}
-                            </span>
-
-                            {/* Filter Dropdown trigger */}
-                            <div className="filter-wrapper" ref={openFilterDropdown === header ? dropdownRef : null}>
-                              <button
-                                className={`filter-trigger-btn ${isFiltered ? 'active-filter' : ''}`}
-                                onClick={() => setOpenFilterDropdown(openFilterDropdown === header ? null : header)}
-                                title="Filter column"
-                              >
-                                ▼
-                              </button>
-
-                              {/* Filter Dropdown Menu */}
-                              {openFilterDropdown === header && (
-                                <div className="filter-dropdown">
-                                  <div className="filter-dropdown-search">
-                                    <input
-                                      type="text"
-                                      placeholder="Search values..."
-                                      value={filterSearchTerms[header] || ''}
-                                      onChange={(e) => setFilterSearchTerms({
-                                        ...filterSearchTerms,
-                                        [header]: e.target.value
-                                      })}
-                                    />
-                                  </div>
-                                  <div className="filter-dropdown-actions">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSelectAllToggle(header)}
-                                    >
-                                      {activeFilters[header]?.size === uniqueColumnValues[header].length
-                                        ? 'Deselect All'
-                                        : 'Select All'}
-                                    </button>
-                                  </div>
-                                  <div className="filter-dropdown-list">
-                                    {uniqueColumnValues[header]
-                                      .filter(val =>
-                                        val.toLowerCase().includes((filterSearchTerms[header] || '').toLowerCase())
-                                      )
-                                      .map(val => {
-                                        const isChecked = activeFilters[header]?.has(val);
-                                        return (
-                                          <label key={val} className="filter-checkbox-label">
-                                            <input
-                                              type="checkbox"
-                                              checked={isChecked}
-                                              onChange={() => handleFilterToggle(header, val)}
-                                            />
-                                            <span className="checkbox-custom-label">{val}</span>
-                                          </label>
-                                        );
-                                      })}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedRows.length === 0 ? (
+          {error ? (
+            <div className="viewer-error">
+              <p className="error-msg">{error}</p>
+              <button className="primary-btn" onClick={onClose}>Go Back</button>
+            </div>
+          ) : (
+            <>
+              {/* Table viewport */}
+              <div className="table-viewport">
+                <table className="excel-table">
+                  <thead>
                     <tr>
-                      <td colSpan={(currentSheet.headers?.length || 0) + 1} className="no-rows">
-                        No rows match current search, filters, or sorting configuration.
-                      </td>
+                      <th className="row-num-col">#</th>
+                      {currentSheet.headers?.map((header) => {
+                        const isFiltered = isColumnFiltered(header);
+                        const isSorted = sortConfig.key === header;
+                        return (
+                          <th key={header} className={isSorted ? 'sorted-th' : ''}>
+                            <div className="th-content">
+                              <span className="th-title" onClick={() => requestSort(header)}>
+                                {header}
+                                {isSorted && (sortConfig.direction === 'asc' ? ' 🔼' : ' 🔽')}
+                              </span>
+
+                              {/* Filter Dropdown trigger */}
+                              <div className="filter-wrapper" ref={openFilterDropdown === header ? dropdownRef : null}>
+                                <button
+                                  className={`filter-trigger-btn ${isFiltered ? 'active-filter' : ''}`}
+                                  onClick={() => setOpenFilterDropdown(openFilterDropdown === header ? null : header)}
+                                  title="Filter column"
+                                >
+                                  ▼
+                                </button>
+
+                                {/* Filter Dropdown Menu */}
+                                {openFilterDropdown === header && (
+                                  <div className="filter-dropdown">
+                                    <div className="filter-dropdown-search">
+                                      <input
+                                        type="text"
+                                        placeholder="Search values..."
+                                        value={filterSearchTerms[header] || ''}
+                                        onChange={(e) => setFilterSearchTerms({
+                                          ...filterSearchTerms,
+                                          [header]: e.target.value
+                                        })}
+                                      />
+                                    </div>
+                                    <div className="filter-dropdown-actions">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSelectAllToggle(header)}
+                                      >
+                                        {activeFilters[header]?.size === uniqueColumnValues[header].length
+                                          ? 'Deselect All'
+                                          : 'Select All'}
+                                      </button>
+                                    </div>
+                                    <div className="filter-dropdown-list">
+                                      {uniqueColumnValues[header]
+                                        .filter(val =>
+                                          val.toLowerCase().includes((filterSearchTerms[header] || '').toLowerCase())
+                                        )
+                                        .map(val => {
+                                          const isChecked = activeFilters[header]?.has(val);
+                                          return (
+                                            <label key={val} className="filter-checkbox-label">
+                                              <input
+                                                type="checkbox"
+                                                checked={isChecked}
+                                                onChange={() => handleFilterToggle(header, val)}
+                                              />
+                                              <span className="checkbox-custom-label">{val}</span>
+                                            </label>
+                                          );
+                                        })}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </th>
+                        );
+                      })}
                     </tr>
-                  ) : (
-                    paginatedRows.map((row, index) => {
-                      const absoluteIndex = (currentPage - 1) * rowsPerPage + index + 1;
-                      return (
-                        <tr key={index}>
-                          <td className="row-num-cell">{absoluteIndex}</td>
-                          {currentSheet.headers?.map(header => {
-                            const val = row[header];
-                            return (
-                              <td key={header} className={val === null || val === undefined ? 'empty-cell' : ''}>
-                                {val === null || val === undefined ? '' : String(val)}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {paginatedRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={(currentSheet.headers?.length || 0) + 1} className="no-rows">
+                          No rows match current search, filters, or sorting configuration.
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedRows.map((row, index) => {
+                        const absoluteIndex = (currentPage - 1) * rowsPerPage + index + 1;
+                        return (
+                          <tr key={index}>
+                            <td className="row-num-cell">{absoluteIndex}</td>
+                            {currentSheet.headers?.map(header => {
+                              const val = row[header];
+                              return (
+                                <td key={header} className={val === null || val === undefined ? 'empty-cell' : ''}>
+                                  {val === null || val === undefined ? '' : String(val)}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Sheet Tabs at Bottom */}
+              {data.sheets && data.sheets.length > 1 && (
+                <div className="sheet-tabs-container">
+                  {data.sheets.map((sheet, idx) => (
+                    <button
+                      key={idx}
+                      className={`sheet-tab ${idx === activeSheetIndex ? 'active' : ''}`}
+                      onClick={() => setActiveSheetIndex(idx)}
+                    >
+                      {sheet.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Footer / Pagination Toolbar */}
+              <footer className="viewer-footer">
+                <div className="footer-status">
+                  Showing {Math.min(processedRows.length, (currentPage - 1) * rowsPerPage + 1)}-{Math.min(processedRows.length, currentPage * rowsPerPage)} of {processedRows.length} filtered rows (Total: {currentSheet.rows?.length || 0})
+                </div>
+
+                <div className="footer-pagination">
+                  <div className="page-size-selector">
+                    <span>Rows per page:</span>
+                    <select
+                      value={rowsPerPage}
+                      onChange={(e) => {
+                        setRowsPerPage(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                    >
+                      <option value={20}>20</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value={500}>500</option>
+                    </select>
+                  </div>
+
+                  <div className="pagination-controls">
+                    <button
+                      disabled={currentPage === 1}
+                      onClick={() => setCurrentPage(1)}
+                    >
+                      ⏮️
+                    </button>
+                    <button
+                      disabled={currentPage === 1}
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    >
+                      ◀️
+                    </button>
+                    <span className="page-indicator">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    <button
+                      disabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    >
+                      ▶️
+                    </button>
+                    <button
+                      disabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage(totalPages)}
+                    >
+                      ⏭️
+                    </button>
+                  </div>
+                </div>
+              </footer>
+            </>
+          )}
+        </div>
+
+        {isChatOpen && (
+          <div className="chat-sidebar">
+            <div className="chat-header">
+              <h3>✨ InsightAI</h3>
+              <button className="close-btn-small" onClick={() => setIsChatOpen(false)}>✕</button>
             </div>
 
-            {/* Sheet Tabs at Bottom */}
-            {data.sheets && data.sheets.length > 1 && (
-              <div className="sheet-tabs-container">
-                {data.sheets.map((sheet, idx) => (
-                  <button
-                    key={idx}
-                    className={`sheet-tab ${idx === activeSheetIndex ? 'active' : ''}`}
-                    onClick={() => setActiveSheetIndex(idx)}
-                  >
-                    {sheet.name}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Footer / Pagination Toolbar */}
-            <footer className="viewer-footer">
-              <div className="footer-status">
-                Showing {Math.min(processedRows.length, (currentPage - 1) * rowsPerPage + 1)}-{Math.min(processedRows.length, currentPage * rowsPerPage)} of {processedRows.length} filtered rows (Total: {currentSheet.rows?.length || 0})
-              </div>
-
-              <div className="footer-pagination">
-                <div className="page-size-selector">
-                  <span>Rows per page:</span>
-                  <select
-                    value={rowsPerPage}
-                    onChange={(e) => {
-                      setRowsPerPage(Number(e.target.value));
-                      setCurrentPage(1);
-                    }}
-                  >
-                    <option value={20}>20</option>
-                    <option value={50}>50</option>
-                    <option value={100}>100</option>
-                    <option value={500}>500</option>
-                  </select>
+            <div className="chat-messages">
+              {chatMessages.map((msg, idx) => (
+                <div key={idx} className={`chat-bubble ${msg.role}`}>
+                  <p>{msg.text}</p>
                 </div>
-
-                <div className="pagination-controls">
-                  <button
-                    disabled={currentPage === 1}
-                    onClick={() => setCurrentPage(1)}
-                  >
-                    ⏮️
-                  </button>
-                  <button
-                    disabled={currentPage === 1}
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                  >
-                    ◀️
-                  </button>
-                  <span className="page-indicator">
-                    Page {currentPage} of {totalPages}
-                  </span>
-                  <button
-                    disabled={currentPage === totalPages}
-                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                  >
-                    ▶️
-                  </button>
-                  <button
-                    disabled={currentPage === totalPages}
-                    onClick={() => setCurrentPage(totalPages)}
-                  >
-                    ⏭️
-                  </button>
+              ))}
+              {isChatLoading && (
+                <div className="chat-bubble system loading">
+                  <div className="typing-indicator">
+                    <span></span><span></span><span></span>
+                  </div>
+                  <p>AI is thinking...</p>
                 </div>
-              </div>
-            </footer>
-          </>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            <form className="chat-input-area" onSubmit={handleSendMessage}>
+              <input
+                type="text"
+                placeholder="Ask a question about the data..."
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                disabled={isChatLoading}
+              />
+              <button type="submit" disabled={isChatLoading || !chatInput.trim()}>
+                ➤
+              </button>
+            </form>
+          </div>
         )}
       </div>
     </div>

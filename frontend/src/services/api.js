@@ -60,6 +60,11 @@ export const api = {
     }),
   getProjectData: (projectId) => request(`/projects/${projectId}/data`, { method: 'GET' }),
   deleteProject: (projectId) => request(`/projects/${projectId}`, { method: 'DELETE' }),
+  chatWithProject: (projectId, message) =>
+    request(`/projects/${projectId}/chat`, {
+      method: 'POST',
+      body: JSON.stringify({ message })
+    }),
 
   getProtected: () => request('/protected', { method: 'GET' }),
 };
