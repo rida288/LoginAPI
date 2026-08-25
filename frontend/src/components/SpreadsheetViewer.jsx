@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 
 export default function SpreadsheetViewer({ project, onClose }) {
   const [data, setData] = useState({ sheets: [] });
@@ -497,7 +498,13 @@ export default function SpreadsheetViewer({ project, onClose }) {
             <div className="chat-messages">
               {chatMessages.map((msg, idx) => (
                 <div key={idx} className={`chat-bubble ${msg.role}`}>
-                  <p>{msg.text}</p>
+                  {msg.role === 'system' ? (
+                    <div className="chat-markdown">
+                      <ReactMarkdown>{msg.text}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p>{msg.text}</p>
+                  )}
                 </div>
               ))}
               {isChatLoading && (
