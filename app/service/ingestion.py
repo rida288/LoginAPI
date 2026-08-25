@@ -2,14 +2,18 @@ import pandas as pd
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from app.db.models.project_embedding import ProjectEmbedding
-from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
-import os
+from langchain_community.embeddings import HuggingFaceEmbeddings
 
-# Initialize the embedding model via API to save server memory
-embedding_model = HuggingFaceInferenceAPIEmbeddings(
-    api_key=os.environ.get("HUGGINGFACEHUB_API_TOKEN", ""),
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
+# Load the embedding model locally on CPU.
+# The model is downloaded on first startup and cached by sentence-transformers.
+# This avoids any external HTTP dependency and runs in <50ms per query.
+print("[InsightAI] Loading local embedding model (BAAI/bge-small-en-v1.5)...")
+embedding_model = HuggingFaceEmbeddings(
+    model_name="BAAI/bge-small-en-v1.5",
+    model_kwargs={"device": "cpu"},
+    encode_kwargs={"normalize_embeddings": True},
 )
+print("[InsightAI] Embedding model ready.")
 
 class IngestionService:
     def __init__(self, db: Session):

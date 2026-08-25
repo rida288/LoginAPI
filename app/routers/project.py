@@ -1,17 +1,18 @@
-from fastapi import APIRouter, Depends, Form, UploadFile, File, HTTPException
+import asyncio
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from app.core.database import get_db
 from app.db.schema.user import UserOutput
 from app.util.protectRoute import get_current_user, get_current_admin
 from app.service.projectService import ProjectService
+from app.core.service_cache import get_cached_chat_service, invalidate_chat_service
 
 projectRouter = APIRouter()
 
-# Schema representation for project metadata return
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional, List
+
 
 class ProjectOutput(BaseModel):
     id: int
@@ -24,29 +25,70 @@ class ProjectOutput(BaseModel):
     class Config:
         from_attributes = True
 
+
+# ---------------------------------------------------------------------------
+# Background ingestion helper
+# ---------------------------------------------------------------------------
+
+def _run_ingestion_background(project_id: int, file_path: str) -> None:
+    """
+    Embeds a project's spreadsheet into pgvector.
+    Runs in a background task AFTER the HTTP response is already sent,
+    so the upload endpoint returns immediately to the user.
+    """
+    from app.core.database import SessionLocal
+    from app.service.ingestion import IngestionService
+
+    db = SessionLocal()
+    try:
+        print(f"[InsightAI] Starting background ingestion for project {project_id}...")
+        total = IngestionService(db=db).process_and_embed_project_data(
+            project_id=project_id,
+            file_path=file_path,
+        )
+        print(f"[InsightAI] Ingestion complete for project {project_id} — {total} rows embedded.")
+    except Exception as e:
+        print(f"[InsightAI] Ingestion FAILED for project {project_id}: {e}")
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
 @projectRouter.post("", response_model=ProjectOutput, status_code=201)
 def create_project(
     name: str = Form(...),
     description: str = Form(None),
     file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = None,
     session: Session = Depends(get_db),
-    current_user: UserOutput = Depends(get_current_user)
+    current_user: UserOutput = Depends(get_current_user),
 ):
     try:
-        return ProjectService(session=session).create_project(
+        project = ProjectService(session=session).create_project(
             name=name,
             description=description,
             file=file,
-            owner_id=current_user.id
+            owner_id=current_user.id,
         )
+        # Kick off embedding ingestion in the background — response returns
+        # immediately without waiting for all rows to be embedded.
+        if background_tasks is not None:
+            background_tasks.add_task(
+                _run_ingestion_background, project.id, project.file_path
+            )
+        return project
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @projectRouter.get("", response_model=List[ProjectOutput])
 def get_user_projects(
     session: Session = Depends(get_db),
-    current_user: UserOutput = Depends(get_current_user)
+    current_user: UserOutput = Depends(get_current_user),
 ):
     try:
         return ProjectService(session=session).get_projects_by_owner(owner_id=current_user.id)
@@ -54,10 +96,11 @@ def get_user_projects(
         print(e)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @projectRouter.get("/all", response_model=List[ProjectOutput])
 def get_all_projects(
     session: Session = Depends(get_db),
-    admin_user: UserOutput = Depends(get_current_admin)
+    admin_user: UserOutput = Depends(get_current_admin),
 ):
     try:
         return ProjectService(session=session).get_all_projects()
@@ -65,64 +108,91 @@ def get_all_projects(
         print(e)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @projectRouter.get("/{project_id}/data")
 def get_project_data(
     project_id: int,
     session: Session = Depends(get_db),
-    current_user: UserOutput = Depends(get_current_user)
+    current_user: UserOutput = Depends(get_current_user),
 ):
     try:
-        is_admin = (current_user.role == "Admin")
+        is_admin = current_user.role == "Admin"
         return ProjectService(session=session).parse_project_data(
             project_id=project_id,
             current_user_id=current_user.id,
-            is_admin=is_admin
+            is_admin=is_admin,
         )
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @projectRouter.delete("/{project_id}")
 def delete_project(
     project_id: int,
     session: Session = Depends(get_db),
-    current_user: UserOutput = Depends(get_current_user)
+    current_user: UserOutput = Depends(get_current_user),
 ):
     try:
-        is_admin = (current_user.role == "Admin")
-        return ProjectService(session=session).delete_project(
+        is_admin = current_user.role == "Admin"
+        result = ProjectService(session=session).delete_project(
             project_id=project_id,
             current_user_id=current_user.id,
-            is_admin=is_admin
+            is_admin=is_admin,
         )
+        # Evict the stale ChatService cache entry for this project
+        invalidate_chat_service(project_id)
+        return result
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 class ChatRequest(BaseModel):
     message: str
+
 
 @projectRouter.post("/{project_id}/chat")
 async def chat_with_project(
     project_id: int,
     request: ChatRequest,
     session: Session = Depends(get_db),
-    current_user: UserOutput = Depends(get_current_user)
+    current_user: UserOutput = Depends(get_current_user),
 ):
-    from app.service.chat_service import ChatService
     from app.db.repository.projectRepo import ProjectRepository
+
     try:
-        is_admin = (current_user.role == "Admin")
+        is_admin = current_user.role == "Admin"
         project = ProjectRepository(session=session).get_project_by_id(project_id)
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
-            
+
         if project.owner_id != current_user.id and not is_admin:
             raise HTTPException(status_code=403, detail="Not authorized to access this project")
-            
-        chat_service = ChatService(db=session, project_id=project_id, file_path=project.file_path)
-        answer = chat_service.ask_question(request.message)
+
+        # Retrieve the cached ChatService (built once, reused for all requests
+        # to this project). The DB session is injected per-request.
+        chat_service = get_cached_chat_service(
+            project_id=project_id,
+            file_path=project.file_path,
+        )
+
+        # Run the synchronous agent (which contains time.sleep retry logic) in
+        # a thread pool so it does NOT block FastAPI's async event loop.
+        try:
+            answer = await asyncio.wait_for(
+                asyncio.to_thread(chat_service.ask_question, request.message, session),
+                timeout=90.0,
+            )
+        except asyncio.TimeoutError:
+            raise HTTPException(
+                status_code=504,
+                detail="The query timed out. Try a simpler or more specific question.",
+            )
+
         return {"answer": answer}
+    except HTTPException:
+        raise
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail=str(e))

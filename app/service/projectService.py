@@ -1,10 +1,16 @@
 import os
+import time as _time
 import pandas as pd
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, UploadFile
 from app.db.repository.projectRepo import ProjectRepository
 from app.db.models.project import Project
 from app.core.storage.s3_client import S3Client
+
+# In-process cache: { project_id: (timestamp_float, result_dict) }
+# Entries expire after _PROJECT_DATA_TTL seconds to pick up any re-uploads.
+_project_data_cache: dict = {}
+_PROJECT_DATA_TTL = 120  # seconds
 
 class ProjectService:
     def __init__(self, session: Session):
@@ -67,6 +73,8 @@ class ProjectService:
 
         # Delete database entry
         self.__projectRepository.delete_project(project_id)
+        # Clear any cached parsed data for this project
+        _project_data_cache.pop(project_id, None)
         return {"message": "Project and its file deleted successfully"}
 
     def parse_project_data(self, project_id: int, current_user_id: int, is_admin: bool):
@@ -76,12 +84,18 @@ class ProjectService:
         if project.owner_id != current_user_id and not is_admin:
             raise HTTPException(status_code=403, detail="Not authorized to access this project's data")
 
+        # Return cached result if still fresh — avoids re-downloading and
+        # re-parsing the file from B2 on every project page open.
+        cached = _project_data_cache.get(project_id)
+        if cached and (_time.time() - cached[0]) < _PROJECT_DATA_TTL:
+            return cached[1]
+
         ext = os.path.splitext(project.file_path)[1].lower()
 
         try:
             s3_client = S3Client()
             file_stream = s3_client.get_file_stream(project.file_path)
-            
+
             import io
             file_buffer = io.BytesIO(file_stream.read())
 
@@ -111,11 +125,12 @@ class ProjectService:
                 result_sheets.append({
                     "name": sheet_name,
                     "headers": headers,
-                    "rows": rows
+                    "rows": rows,
                 })
 
-            return {
-                "sheets": result_sheets
-            }
+            result = {"sheets": result_sheets}
+            # Store in cache with current timestamp
+            _project_data_cache[project_id] = (_time.time(), result)
+            return result
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error parsing file: {str(e)}")

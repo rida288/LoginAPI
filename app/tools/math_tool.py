@@ -34,7 +34,7 @@ def get_math_tool(file_path: str):
     df = _load_dataframe(file_path)
 
     # Initialize a specific LLM for the Pandas agent
-    llm = ChatGroq(model_name="openai/gpt-oss-120b", temperature=0)
+    llm = ChatGroq(model_name="openai/gpt-oss-20b", temperature=0)
     
     # Create the pandas agent
     pandas_agent = create_pandas_dataframe_agent(

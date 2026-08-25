@@ -1,6 +1,14 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-const request = async (endpoint, options = {}) => {
+/**
+ * Core request helper.
+ * @param {string} endpoint
+ * @param {RequestInit} options
+ * @param {number} timeoutMs  - Abort the request after this many milliseconds.
+ *                              Chat requests use 95s (backend timeout is 90s).
+ *                              All other requests use the default 15s.
+ */
+const request = async (endpoint, options = {}, timeoutMs = 15000) => {
   const token = localStorage.getItem('token');
   const headers = {
     ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
@@ -8,10 +16,24 @@ const request = async (endpoint, options = {}) => {
     ...options.headers,
   };
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response;
+  try {
+    response = await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('Request timed out. Please try again.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   const data = await response.json();
   if (!response.ok) {
@@ -60,11 +82,17 @@ export const api = {
     }),
   getProjectData: (projectId) => request(`/projects/${projectId}/data`, { method: 'GET' }),
   deleteProject: (projectId) => request(`/projects/${projectId}`, { method: 'DELETE' }),
+
+  // Chat uses a longer timeout — the backend allows up to 90s for complex queries.
   chatWithProject: (projectId, message) =>
-    request(`/projects/${projectId}/chat`, {
-      method: 'POST',
-      body: JSON.stringify({ message })
-    }),
+    request(
+      `/projects/${projectId}/chat`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ message }),
+      },
+      95000, // 95s client timeout (backend is 90s)
+    ),
 
   getProtected: () => request('/protected', { method: 'GET' }),
 };
