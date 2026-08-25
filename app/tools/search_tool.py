@@ -20,11 +20,18 @@ def get_search_tool(db: Session, project_id: int):
         if not actual_query:
             return "Error: Please provide a query or question."
             
-        # Embed the query locally (sentence-transformers, in-process — no network call)
-        try:
-            query_embedding = embedding_model.embed_query(actual_query)
-        except Exception as e:
-            return f"Error: Failed to generate query embedding: {e}"
+        # Embed the query with a robust retry loop (network API may be flaky)
+        import time
+        query_embedding = None
+        for attempt in range(5):
+            try:
+                query_embedding = embedding_model.embed_query(actual_query)
+                break
+            except Exception as e:
+                if attempt == 4:
+                    return f"Error: Failed to generate query embedding after 5 attempts: {e}"
+                print(f"[InsightAI] HuggingFace API network error on search, retrying... ({e})")
+                time.sleep(2)
         
         # Query pgvector for the top 5 closest matches, filtered by project_id
         stmt = select(ProjectEmbedding).where(

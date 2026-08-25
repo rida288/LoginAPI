@@ -177,12 +177,13 @@ async def chat_with_project(
             file_path=project.file_path,
         )
 
-        # Run the synchronous agent (which contains time.sleep retry logic) in
-        # a thread pool so it does NOT block FastAPI's async event loop.
+        # Run the synchronous agent in a thread pool so it does NOT block
+        # FastAPI's async event loop. The session is NOT passed in —
+        # chat_service.ask_question creates its own thread-local DB session.
         try:
             answer = await asyncio.wait_for(
-                asyncio.to_thread(chat_service.ask_question, request.message, session),
-                timeout=90.0,
+                asyncio.to_thread(chat_service.ask_question, request.message),
+                timeout=50.0,  # must fire before Render's ~57s proxy timeout
             )
         except asyncio.TimeoutError:
             raise HTTPException(
