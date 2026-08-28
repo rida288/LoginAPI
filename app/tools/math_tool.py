@@ -33,8 +33,8 @@ def _load_dataframe(file_path: str) -> pd.DataFrame:
 def get_math_tool(file_path: str):
     df = _load_dataframe(file_path)
 
-    # Initialize a specific LLM for the Pandas agent
-    llm = ChatGroq(model_name="openai/gpt-oss-20b", temperature=0)
+    # Initialize a highly capable reasoning LLM for the Pandas agent
+    llm = ChatGroq(model_name="llama-3.1-70b-versatile", temperature=0)
     
     # Create the pandas agent
     pandas_agent = create_pandas_dataframe_agent(
@@ -51,8 +51,10 @@ def get_math_tool(file_path: str):
     @tool("math_and_data_engine", args_schema=ToolInput)
     def math_and_data_engine(query: str = None, question: str = None) -> str:
         """
-        Use this tool when the question requires math, aggregations, counting, sorting, or exact column filtering on the dataset.
-        Input should be a detailed natural language question about the data.
+        Use this tool for all complex data analytics tasks on the dataset.
+        This includes computing math, multi-step aggregations, counting, sorting, cross-referencing columns,
+        statistical analysis, filtering, grouping, and finding differences or patterns in large datasets.
+        Input should be a highly detailed natural language question explicitly stating what to analyze.
         """
         actual_query = query or question
         if not actual_query:

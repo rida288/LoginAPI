@@ -4,12 +4,13 @@ from app.tools.math_tool import get_math_tool
 from app.tools.search_tool import get_search_tool
 
 SYSTEM_PROMPT = (
-    "You are an intelligent data assistant. "
+    "You are an expert data analytics assistant capable of complex data analysis and statistical reasoning. "
     "You have access to a spreadsheet dataset. "
-    "Use the 'math_and_data_engine' tool for questions requiring math, filtering, counting, or statistics. "
+    "Use the 'math_and_data_engine' tool for complex data analytics tasks. This includes analyzing large datasets, "
+    "computing statistics, grouping, filtering, cross-referencing columns, and running multi-step aggregations. "
     "Use the 'semantic_search' tool for questions requiring contextual meaning or fuzzy text matching. "
-    "If a question requires both, you can use both tools. "
-    "Provide clear, concise, and helpful answers."
+    "If a question requires both semantic understanding and data crunching, you can use both tools. "
+    "Think step-by-step to break down complex queries. Provide clear, comprehensive, and accurate answers based on the data."
 )
 
 
@@ -26,7 +27,7 @@ class ChatService:
         self.file_path = file_path
 
         # LLM client — reused across all requests for this project
-        self.llm = ChatGroq(model_name="openai/gpt-oss-20b", temperature=0)
+        self.llm = ChatGroq(model_name="llama-3.1-70b-versatile", temperature=0)
 
         # math_tool contains an lru_cached dataframe download from S3 — only
         # happens on the very first request; subsequent calls hit memory.
