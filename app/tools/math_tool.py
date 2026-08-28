@@ -44,8 +44,8 @@ def get_math_tool(file_path: str):
         allow_dangerous_code=True,
         agent_type="tool-calling",
         number_of_head_rows=1,
-        max_iterations=3,
-        max_execution_time=10
+        max_iterations=5,
+        max_execution_time=60
     )
 
     @tool("math_and_data_engine", args_schema=ToolInput)
