@@ -27,7 +27,7 @@ class ChatService:
         self.file_path = file_path
 
         # LLM client — reused across all requests for this project
-        self.llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
+        self.llm = ChatGroq(model_name="mixtral-8x7b-32768", temperature=0)
 
         # math_tool contains an lru_cached dataframe download from S3 — only
         # happens on the very first request; subsequent calls hit memory.
