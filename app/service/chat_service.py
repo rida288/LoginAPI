@@ -1,3 +1,4 @@
+import threading
 from langchain_groq import ChatGroq
 from langgraph.prebuilt import create_react_agent
 from app.tools.math_tool import get_math_tool
@@ -17,14 +18,28 @@ SYSTEM_PROMPT = (
 class ChatService:
     """
     Constructed once per project and cached at the application level
-    (see app.core.service_cache). The DB session is NOT stored here —
-    a fresh session is created inside ask_question() which runs in a
-    thread pool, keeping session usage fully thread-safe.
+    (see app.core.service_cache).
+
+    The LangGraph ReAct agent is compiled ONCE in __init__ and reused for
+    every subsequent request. Per-request DB session safety is achieved via
+    threading.local(): ask_question() sets self._local.db before invoking
+    the agent, and the semantic_search tool reads self._local.db at call
+    time rather than closing over a specific session object.
     """
 
     def __init__(self, project_id: int, file_path: str):
         self.project_id = project_id
         self.file_path = file_path
+
+        # Thread-local storage for the per-request DB session.
+        # Each worker thread that calls ask_question() writes its own session
+        # here, so concurrent requests never share a session.
+        self._local = threading.local()
+
+        # Returns the DB session bound to the current worker thread.
+        # Called by the search tool at invocation time, not at build time.
+        def _get_db():
+            return self._local.db
 
         # LLM client — reused across all requests for this project
         self.llm = ChatGroq(model_name="openai/gpt-oss-120b", temperature=0)
@@ -33,36 +48,42 @@ class ChatService:
         # happens on the very first request; subsequent calls hit memory.
         self.math_tool = get_math_tool(file_path=self.file_path)
 
+        # search_tool is built with a db_getter callable, not a concrete session,
+        # so it remains safe to reuse across threads.
+        self.search_tool = get_search_tool(db_getter=_get_db, project_id=self.project_id)
+
+        # Compile the ReAct agent graph ONCE. This is the expensive step that
+        # was previously being re-run on every single request.
+        print(f"[InsightAI] Compiling ReAct agent for project {project_id}...")
+        self.agent = create_react_agent(
+            model=self.llm,
+            tools=[self.search_tool, self.math_tool],
+            prompt=SYSTEM_PROMPT,
+        )
+        print(f"[InsightAI] Agent for project {project_id} ready.")
+
     def ask_question(self, question: str) -> str:
         """
-        Answers a question using the ReAct agent.
+        Answers a question using the pre-compiled ReAct agent.
 
         This method runs inside asyncio.to_thread (a worker thread).
-        It creates its OWN database session rather than accepting one as a
-        parameter — SQLAlchemy sessions are not thread-safe and must not be
-        shared across threads.
+        It creates its OWN database session and stores it in thread-local
+        storage so the semantic_search tool can safely access it.
         """
         import time
         from app.core.database import SessionLocal
 
-        # Create a fresh, thread-local DB session for this request
+        # Create a fresh, thread-local DB session for this request and
+        # expose it to the search tool via self._local.
         db = SessionLocal()
+        self._local.db = db
+
         try:
-            # Build a fresh search tool bound to this thread's session
-            search_tool = get_search_tool(db=db, project_id=self.project_id)
-
-            # Assemble the agent with both tools for this request
-            agent = create_react_agent(
-                model=self.llm,
-                tools=[search_tool, self.math_tool],
-                prompt=SYSTEM_PROMPT,
-            )
-
             max_retries = 3
 
             for attempt in range(max_retries):
                 try:
-                    response = agent.invoke({"messages": [("human", question)]})
+                    response = self.agent.invoke({"messages": [("human", question)]})
                     return response["messages"][-1].content
                 except Exception as e:
                     error_msg = str(e)
@@ -91,3 +112,5 @@ class ChatService:
         finally:
             # Always close the thread-local session, even if an exception occurs
             db.close()
+            self._local.db = None
+

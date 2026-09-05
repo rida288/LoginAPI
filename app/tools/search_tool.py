@@ -1,5 +1,5 @@
 from langchain.tools import tool
-from sqlalchemy.orm import Session
+from typing import Callable
 from sqlalchemy import select
 from pydantic import BaseModel, Field
 from app.db.models.project_embedding import ProjectEmbedding
@@ -9,7 +9,7 @@ class SearchInput(BaseModel):
     query: str = Field(default=None, description="The natural language query to search for")
     question: str = Field(default=None, description="The natural language query to search for (alias for query)")
 
-def get_search_tool(db: Session, project_id: int):
+def get_search_tool(db_getter: Callable, project_id: int):
     @tool("semantic_search", args_schema=SearchInput)
     def semantic_search(query: str = None, question: str = None) -> str:
         """
@@ -41,6 +41,9 @@ def get_search_tool(db: Session, project_id: int):
                 
         if query_embedding is None:
             return "Error: Failed to generate query embedding due to persistent timeouts."
+        
+        # Retrieve the thread-local DB session at invocation time
+        db = db_getter()
         
         # Query pgvector for the top 5 closest matches, filtered by project_id
         stmt = select(ProjectEmbedding).where(
