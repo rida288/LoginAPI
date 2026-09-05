@@ -170,19 +170,19 @@ async def chat_with_project(
         if project.owner_id != current_user.id and not is_admin:
             raise HTTPException(status_code=403, detail="Not authorized to access this project")
 
-        # Retrieve the cached ChatService (built once, reused for all requests
-        # to this project). The DB session is injected per-request.
-        chat_service = get_cached_chat_service(
-            project_id=project_id,
-            file_path=project.file_path,
-        )
+        def get_service_and_ask():
+            chat_service = get_cached_chat_service(
+                project_id=project_id,
+                file_path=project.file_path,
+            )
+            return chat_service.ask_question(request.message)
 
         # Run the synchronous agent in a thread pool so it does NOT block
         # FastAPI's async event loop. The session is NOT passed in —
         # chat_service.ask_question creates its own thread-local DB session.
         try:
             answer = await asyncio.wait_for(
-                asyncio.to_thread(chat_service.ask_question, request.message),
+                asyncio.to_thread(get_service_and_ask),
                 timeout=110.0,
             )
         except asyncio.TimeoutError:

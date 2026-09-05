@@ -1,3 +1,4 @@
+import threading
 from typing import Dict, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -8,6 +9,7 @@ if TYPE_CHECKING:
 # agent on every single chat request — only the DB-session-dependent search
 # tool is rebuilt per request (inside ask_question).
 _chat_service_cache: Dict[int, "ChatService"] = {}
+_cache_lock = threading.Lock()
 
 
 def get_cached_chat_service(project_id: int, file_path: str) -> "ChatService":
@@ -15,14 +17,15 @@ def get_cached_chat_service(project_id: int, file_path: str) -> "ChatService":
     Returns a cached ChatService for the given project, constructing it once
     and reusing it for all subsequent requests to the same project.
     """
-    if project_id not in _chat_service_cache:
-        from app.service.chat_service import ChatService
-        print(f"[InsightAI] Building ChatService for project {project_id} (first request)...")
-        _chat_service_cache[project_id] = ChatService(
-            project_id=project_id,
-            file_path=file_path,
-        )
-    return _chat_service_cache[project_id]
+    with _cache_lock:
+        if project_id not in _chat_service_cache:
+            from app.service.chat_service import ChatService
+            print(f"[InsightAI] Building ChatService for project {project_id} (first request)...")
+            _chat_service_cache[project_id] = ChatService(
+                project_id=project_id,
+                file_path=file_path,
+            )
+        return _chat_service_cache[project_id]
 
 
 def invalidate_chat_service(project_id: int) -> None:
@@ -30,6 +33,7 @@ def invalidate_chat_service(project_id: int) -> None:
     Removes the cached ChatService for a project.
     Must be called when a project is deleted so stale state is cleared.
     """
-    removed = _chat_service_cache.pop(project_id, None)
-    if removed:
-        print(f"[InsightAI] Evicted ChatService cache for deleted project {project_id}")
+    with _cache_lock:
+        removed = _chat_service_cache.pop(project_id, None)
+        if removed:
+            print(f"[InsightAI] Evicted ChatService cache for deleted project {project_id}")

@@ -75,10 +75,16 @@ class IngestionService:
         def embed_batch(batch):
             batch_texts, batch_indices = batch
             import time
+            import concurrent.futures
             for attempt in range(5):
                 try:
-                    embeddings = embedding_model.embed_documents(batch_texts)
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(embedding_model.embed_documents, batch_texts)
+                        embeddings = future.result(timeout=15.0)
                     return batch_texts, batch_indices, embeddings
+                except concurrent.futures.TimeoutError:
+                    print(f"[InsightAI] HuggingFace API timeout on ingestion attempt {attempt+1}, retrying...")
+                    time.sleep(3)
                 except Exception as e:
                     if attempt == 4:
                         raise e

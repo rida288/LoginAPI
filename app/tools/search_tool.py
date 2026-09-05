@@ -22,16 +22,25 @@ def get_search_tool(db: Session, project_id: int):
             
         # Embed the query with a robust retry loop (network API may be flaky)
         import time
+        import concurrent.futures
         query_embedding = None
         for attempt in range(5):
             try:
-                query_embedding = embedding_model.embed_query(actual_query)
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(embedding_model.embed_query, actual_query)
+                    query_embedding = future.result(timeout=15.0)
                 break
+            except concurrent.futures.TimeoutError:
+                print(f"[InsightAI] HuggingFace API timeout on search attempt {attempt+1}, retrying...")
+                time.sleep(2)
             except Exception as e:
                 if attempt == 4:
                     return f"Error: Failed to generate query embedding after 5 attempts: {e}"
                 print(f"[InsightAI] HuggingFace API network error on search, retrying... ({e})")
                 time.sleep(2)
+                
+        if query_embedding is None:
+            return "Error: Failed to generate query embedding due to persistent timeouts."
         
         # Query pgvector for the top 5 closest matches, filtered by project_id
         stmt = select(ProjectEmbedding).where(
