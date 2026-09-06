@@ -34,7 +34,7 @@ def get_math_tool(file_path: str):
     df = _load_dataframe(file_path)
 
     # Initialize a highly capable reasoning LLM for the Pandas agent
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+    llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0)
     
     # Create the pandas agent
     pandas_agent = create_pandas_dataframe_agent(

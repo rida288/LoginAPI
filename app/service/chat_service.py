@@ -42,7 +42,7 @@ class ChatService:
             return self._local.db
 
         # LLM client — reused across all requests for this project
-        self.llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+        self.llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0)
 
         # math_tool contains an lru_cached dataframe download from S3 — only
         # happens on the very first request; subsequent calls hit memory.
