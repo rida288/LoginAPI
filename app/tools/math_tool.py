@@ -1,79 +1,94 @@
+from functools import lru_cache
+import io
 from langchain.tools import tool
-from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
-from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field
 import pandas as pd
+import numpy as np
 
-class ToolInput(BaseModel):
-    query: str = Field(default=None, description="The natural language question or search query")
-    question: str = Field(default=None, description="The natural language question or search query (alias for query)")
 
-from functools import lru_cache
-import time
+class PythonCodeInput(BaseModel):
+    code: str = Field(
+        description=(
+            "Valid Python code/expression to execute on the pandas DataFrame `df`. "
+            "Examples: `df['Net Sales'].mean()`, `df.groupby('Gender')['Net Sales'].sum()`, "
+            "or `df['Type of Customer'].value_counts()`. Always reference the DataFrame as `df`."
+        )
+    )
+
 
 @lru_cache(maxsize=1)
 def _load_dataframe(file_path: str) -> pd.DataFrame:
     from app.core.storage.s3_client import S3Client
-    import io
+
     print(f"[InsightAI] Downloading {file_path} from S3 and caching in memory...")
-    
-    # Get file stream from B2
+
     s3_client = S3Client()
     file_stream = s3_client.get_file_stream(file_path)
     file_buffer = io.BytesIO(file_stream.read())
-    
-    # Determine file type and read
-    if file_path.endswith('.csv'):
+
+    if file_path.endswith(".csv"):
         return pd.read_csv(file_buffer)
-    elif file_path.endswith('.xlsx'):
+    elif file_path.endswith(".xlsx"):
         return pd.read_excel(file_buffer)
     else:
         raise ValueError("Unsupported file format")
 
+
+def get_dataframe_schema(file_path: str) -> str:
+    """Generates a text summary of the DataFrame schema for the LLM system prompt."""
+    df = _load_dataframe(file_path)
+    cols_info = [f"  - '{col}' ({dtype})" for col, dtype in df.dtypes.items()]
+    head_sample = df.head(2).to_string(index=False)
+
+    schema_summary = (
+        f"Dataset Overview:\n"
+        f"- Total Rows: {len(df)}, Total Columns: {len(df.columns)}\n"
+        f"- Column Names & Types:\n" + "\n".join(cols_info) + "\n\n"
+        f"- Sample Rows:\n{head_sample}"
+    )
+    return schema_summary
+
+
 def get_math_tool(file_path: str):
     df = _load_dataframe(file_path)
 
-    # Initialize a highly capable reasoning LLM for the Pandas agent
-    llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0)
-    
-    # Create the pandas agent
-    pandas_agent = create_pandas_dataframe_agent(
-        llm, 
-        df, 
-        verbose=True, 
-        allow_dangerous_code=True,
-        agent_type="tool-calling",
-        number_of_head_rows=1,
-        max_iterations=5,
-        max_execution_time=60
-    )
+    @tool("execute_pandas_code", args_schema=PythonCodeInput)
+    def execute_pandas_code(code: str) -> str:
+        """
+        Executes Python code/expressions directly on the loaded dataset pandas DataFrame `df`.
+        Use this tool for math calculations, aggregations, counts, sums, averages, grouping,
+        filtering, sorting, and statistical analysis.
+        Input must be valid Python code operating on `df`.
+        """
+        if not code or not code.strip():
+            return "Error: No python code provided."
 
-    @tool("math_and_data_engine", args_schema=ToolInput)
-    def math_and_data_engine(query: str = None, question: str = None) -> str:
-        """
-        Use this tool for all complex data analytics tasks on the dataset.
-        This includes computing math, multi-step aggregations, counting, sorting, cross-referencing columns,
-        statistical analysis, filtering, grouping, and finding differences or patterns in large datasets.
-        Input should be a highly detailed natural language question explicitly stating what to analyze.
-        """
-        actual_query = query or question
-        if not actual_query:
-            return "Error: Please provide a query or question."
-            
-        # Implement exponential backoff for the agent invocation
-        max_retries = 3
-        for attempt in range(max_retries):
+        clean_code = code.strip()
+        # Clean up markdown code blocks if the LLM wrapped it in ```python
+        if clean_code.startswith("```"):
+            lines = clean_code.splitlines()
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            clean_code = "\n".join(lines).strip()
+
+        try:
+            local_vars = {"df": df, "pd": pd, "np": np}
+
+            # Try evaluating as a single expression first (e.g. df['Net Sales'].mean())
             try:
-                response = pandas_agent.invoke({"input": actual_query})
-                return response["output"]
-            except Exception as e:
-                error_msg = str(e)
-                if "429" in error_msg or "rate limit" in error_msg.lower():
-                    if attempt < max_retries - 1:
-                        sleep_time = 2 ** attempt
-                        print(f"[InsightAI] Rate limit hit for math_tool, retrying in {sleep_time}s...")
-                        time.sleep(sleep_time)
-                        continue
-                return f"Error executing data analysis: {error_msg}"
+                result = eval(clean_code, {"__builtins__": __builtins__}, local_vars)
+            except SyntaxError:
+                # If it's a multiline statement, exec it
+                exec(clean_code, {"__builtins__": __builtins__}, local_vars)
+                result = local_vars.get("result", "Code executed successfully.")
 
-    return math_and_data_engine
+            if isinstance(result, (pd.DataFrame, pd.Series)):
+                return result.to_string()
+            return str(result)
+
+        except Exception as e:
+            return f"Python Execution Error: {type(e).__name__}: {str(e)}"
+
+    return execute_pandas_code
