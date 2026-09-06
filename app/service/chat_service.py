@@ -87,13 +87,9 @@ class ChatService:
                 except Exception as e:
                     error_msg = str(e)
 
-                    # Handle rate limits with exponential backoff
-                    if "429" in error_msg or "rate limit" in error_msg.lower():
-                        if attempt < max_retries - 1:
-                            sleep_time = 2 ** attempt
-                            print(f"[InsightAI] Rate limit hit, retrying in {sleep_time}s...")
-                            time.sleep(sleep_time)
-                            continue
+                    # Handle Gemini rate limits immediately to prevent server 504 timeouts
+                    if "429" in error_msg or "rate limit" in error_msg.lower() or "resource_exhausted" in error_msg.lower():
+                        return "Gemini API rate limit reached. Please wait a few seconds before asking your next question."
 
                     # Handle malformed JSON tool calls from the LLM
                     if "Failed to parse tool call" in error_msg or "JSON" in error_msg:
