@@ -38,10 +38,12 @@ def _run_ingestion_background(project_id: int, file_path: str) -> None:
     """
     from app.core.database import SessionLocal
     from app.service.ingestion import IngestionService
+    from app.tools.math_tool import _load_dataframe
 
     db = SessionLocal()
     try:
         print(f"[InsightAI] Starting background ingestion for project {project_id}...")
+        _load_dataframe(file_path)
         total = IngestionService(db=db).process_and_embed_project_data(
             project_id=project_id,
             file_path=file_path,
@@ -183,7 +185,7 @@ async def chat_with_project(
         try:
             answer = await asyncio.wait_for(
                 asyncio.to_thread(get_service_and_ask),
-                timeout=90.0,
+                timeout=25.0,
             )
         except asyncio.TimeoutError:
             raise HTTPException(
