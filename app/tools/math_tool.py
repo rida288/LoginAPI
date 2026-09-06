@@ -1,6 +1,6 @@
 from langchain.tools import tool
 from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field
 import pandas as pd
 
@@ -34,7 +34,7 @@ def get_math_tool(file_path: str):
     df = _load_dataframe(file_path)
 
     # Initialize a highly capable reasoning LLM for the Pandas agent
-    llm = ChatGroq(model_name="openai/gpt-oss-120b", temperature=0)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
     
     # Create the pandas agent
     pandas_agent = create_pandas_dataframe_agent(

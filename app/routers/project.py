@@ -183,7 +183,7 @@ async def chat_with_project(
         try:
             answer = await asyncio.wait_for(
                 asyncio.to_thread(get_service_and_ask),
-                timeout=110.0,
+                timeout=90.0,
             )
         except asyncio.TimeoutError:
             raise HTTPException(

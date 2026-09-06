@@ -13,7 +13,7 @@ pandas
 openpyxl
 boto3
 langchain
-langchain-groq
+langchain-google-genai
 langchain-community
 langchain-experimental
 langgraph

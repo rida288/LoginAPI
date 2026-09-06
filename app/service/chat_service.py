@@ -1,5 +1,5 @@
 import threading
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 from app.tools.math_tool import get_math_tool
 from app.tools.search_tool import get_search_tool
@@ -42,7 +42,7 @@ class ChatService:
             return self._local.db
 
         # LLM client — reused across all requests for this project
-        self.llm = ChatGroq(model_name="openai/gpt-oss-120b", temperature=0)
+        self.llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
 
         # math_tool contains an lru_cached dataframe download from S3 — only
         # happens on the very first request; subsequent calls hit memory.
