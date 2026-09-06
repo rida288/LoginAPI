@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 SQLALCHEMY_DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+psycopg2://postgres:pwd@127.0.0.1:5433/postgres"  # local fallback for dev
+    "postgresql+psycopg2://postgres:pwd@127.0.0.1:5432/postgres"  # local fallback for dev
 )
 
 if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
