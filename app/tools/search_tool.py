@@ -42,26 +42,32 @@ def get_search_tool(db_getter: Callable, project_id: int):
         if query_embedding is None:
             return "Error: Failed to generate query embedding due to network timeout."
         
-        # Retrieve the thread-local DB session at invocation time
-        db = db_getter()
-        
-        # Query pgvector for the top 5 closest matches, filtered by project_id
-        stmt = select(ProjectEmbedding).where(
-            ProjectEmbedding.project_id == project_id
-        ).order_by(
-            ProjectEmbedding.embedding.cosine_distance(query_embedding)
-        ).limit(5)
-        
-        results = db.execute(stmt).scalars().all()
-        
-        if not results:
-            return "No relevant text data found for this query."
-            
-        # Combine the results into a string
-        result_texts = []
-        for res in results:
-            result_texts.append(f"Row {res.row_index}: {res.content}")
-            
-        return "\n".join(result_texts)
+        # Open a fresh DB session or use thread-local if available
+        from app.core.database import SessionLocal
+        db = db_getter() if db_getter and db_getter() is not None else SessionLocal()
+        should_close = db_getter is None or db_getter() is None
+
+        try:
+            # Query pgvector for the top 5 closest matches, filtered by project_id
+            stmt = select(ProjectEmbedding).where(
+                ProjectEmbedding.project_id == project_id
+            ).order_by(
+                ProjectEmbedding.embedding.cosine_distance(query_embedding)
+            ).limit(5)
+
+            results = db.execute(stmt).scalars().all()
+
+            if not results:
+                return "No relevant text data found for this query."
+
+            # Combine the results into a string
+            result_texts = []
+            for res in results:
+                result_texts.append(f"Row {res.row_index}: {res.content}")
+
+            return "\n".join(result_texts)
+        finally:
+            if should_close:
+                db.close()
         
     return semantic_search
