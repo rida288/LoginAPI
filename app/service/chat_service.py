@@ -84,7 +84,15 @@ class ChatService:
             for attempt in range(max_retries):
                 try:
                     response = self.agent.invoke({"messages": [("human", question)]})
-                    return response["messages"][-1].content
+                    raw = response["messages"][-1].content
+                    # Gemini can return content as a list of parts (e.g. [{"type": "text", "text": "..."}])
+                    # rather than a plain string. Flatten it so the frontend always gets a string.
+                    if isinstance(raw, list):
+                        return " ".join(
+                            part.get("text", "") for part in raw
+                            if isinstance(part, dict)
+                        )
+                    return raw
                 except Exception as e:
                     error_msg = str(e)
 
