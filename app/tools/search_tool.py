@@ -24,18 +24,18 @@ def get_search_tool(db_getter: Callable, project_id: int):
         import time
         import concurrent.futures
         query_embedding = None
-        for attempt in range(2):
+        for attempt in range(3):
             try:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(embedding_model.embed_query, actual_query)
-                    query_embedding = future.result(timeout=4.0)
+                    query_embedding = future.result(timeout=12.0)
                 break
             except concurrent.futures.TimeoutError:
                 print(f"[InsightAI] HuggingFace API timeout on search attempt {attempt+1}, retrying...")
                 time.sleep(1)
             except Exception as e:
-                if attempt == 1:
-                    return f"Error: Failed to generate query embedding after 2 attempts: {e}"
+                if attempt == 2:
+                    return f"Error: Failed to generate query embedding after 3 attempts: {e}"
                 print(f"[InsightAI] HuggingFace API network error on search, retrying... ({e})")
                 time.sleep(1)
                 

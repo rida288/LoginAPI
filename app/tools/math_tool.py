@@ -16,7 +16,7 @@ class PythonCodeInput(BaseModel):
     )
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=32)
 def _load_dataframe(file_path: str) -> pd.DataFrame:
     from app.core.storage.s3_client import S3Client
 

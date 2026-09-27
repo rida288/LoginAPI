@@ -41,7 +41,7 @@ class ChatService:
             return self._local.db
 
         # LLM client — reused across all requests for this project
-        self.llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0)
+        self.llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
 
         # Build schema summary so the agent understands the DataFrame structure
         schema_info = get_dataframe_schema(self.file_path)

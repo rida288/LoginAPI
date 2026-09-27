@@ -9,12 +9,30 @@ class UserService:
     def __init__(self, session:Session):
         self.__userRepository = UserRepository(session=session)
         
-    def signup(self, user_details:UserInCreate) -> UserOutput:
+    def signup(self, user_details: UserInCreate) -> UserOutput:
         if self.__userRepository.user_exists_by_email(email=user_details.email):
             raise HTTPException(status_code=400, detail="User with this email already exists")
         
         hashed_password = HashHelper.get_password_hash(plain_password=user_details.password)
         user_details.password = hashed_password
+
+        # If this is the first user in the system, automatically make them an approved Admin
+        existing_users = self.__userRepository.get_all_users()
+        if not existing_users:
+            from app.db.models.user import User
+            user = User(
+                first_name=user_details.first_name,
+                last_name=user_details.last_name,
+                email=user_details.email,
+                password=user_details.password,
+                role="Admin",
+                is_approved=True
+            )
+            self.__userRepository.session.add(user)
+            self.__userRepository.session.commit()
+            self.__userRepository.session.refresh(user)
+            return user
+
         return self.__userRepository.create_user(user_data=user_details)
     
     def login(self, login_details:UserInLogin) -> UserWithToken:
