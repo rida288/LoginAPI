@@ -37,15 +37,27 @@ async def lifespan(app: FastAPI):
     # Cleanup on shutdown (none needed currently)
 
 
+from fastapi.responses import JSONResponse
+from fastapi import Request
+
 app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    print(f"[InsightAI] Unhandled Server Error: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal Server Error: {str(exc)}"},
+    )
 
 app.include_router(authRouter, tags=["auth"], prefix="/auth")
 app.include_router(adminRouter, tags=["admin"], prefix="/admin")
