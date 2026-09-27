@@ -5,20 +5,29 @@ from app.db.models.project import Project
 from app.db.models.project_embedding import ProjectEmbedding 
 from sqlalchemy import text
 
+import time
+
 def create_tables():
-    with engine.connect() as conn:
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        conn.commit()
-    Base.metadata.create_all(bind=engine)
-    # Explicitly ensure the HNSW vector index exists even on pre-existing tables.
-    # Base.metadata.create_all skips tables that already exist, so the index
-    # defined in the SQLAlchemy model may never have been created in production.
-    with engine.connect() as conn:
-        conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS ix_project_embeddings_embedding_hnsw
-            ON project_embeddings
-            USING hnsw (embedding vector_cosine_ops)
-            WITH (m = 16, ef_construction = 64)
-        """))
-        conn.commit()
-    print("[InsightAI] Database tables and HNSW index verified.")
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                conn.commit()
+            Base.metadata.create_all(bind=engine)
+            with engine.connect() as conn:
+                conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS ix_project_embeddings_embedding_hnsw
+                    ON project_embeddings
+                    USING hnsw (embedding vector_cosine_ops)
+                    WITH (m = 16, ef_construction = 64)
+                """))
+                conn.commit()
+            print("[InsightAI] Database tables and HNSW index verified.")
+            return
+        except Exception as e:
+            if attempt == max_retries - 1:
+                print(f"[InsightAI] Database initialization failed after {max_retries} attempts: {e}")
+                raise e
+            print(f"[InsightAI] Database connection attempt {attempt + 1} failed ({e}), retrying in 2s...")
+            time.sleep(2)
